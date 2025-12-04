@@ -1,42 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Edit2, Trash2 } from 'lucide-react';
+import { ArrowLeft, Save, Edit2, Trash2, Loader2 } from 'lucide-react';
 import Layout from '../components/Layout';
 import FormSection from '../components/FormSection';
 import Toast from '../components/Toast';
 import { BRAND_SCHEMA } from '../config/schema';
-
-// 模擬資料
-const mockBrandData = {
-  'COMP-L01': {
-    brand_code: 'COMP-L01',
-    brand_name_zh: 'La Mer',
-    brand_name_en: 'La Mer',
-    group_name: '雅詩蘭黛集團',
-    priority: 'High',
-    positioning_tier: 'Luxury',
-    price_range_note: 'TWD 5,000-25,000',
-    tagline: 'The Miracle Broth',
-    philosophy: '以海洋為靈感，結合科技與自然的頂級護膚品牌',
-    visual_style: '簡約奢華，海洋藍綠色系',
-    key_ingredients_focus: ['海洋精華', '深海酵素', 'Miracle Broth'],
-    target_ages: ['35-44', '45-54'],
-    target_skin_types: ['乾性', '中性'],
-    skin_problems: ['抗老', '修復', '保濕'],
-    main_channels: ['百貨專櫃', '官網電商'],
-    kol_strategy: '與高端時尚 KOL 合作，強調奢華體驗',
-    hero_product_1: '經典乳霜|乳霜|深層修護|TWD 12,500',
-    hero_product_2: '修護精華|精華液|快速修復|TWD 8,800',
-    categories_covered: ['精華液', '乳霜', '眼霜', '化妝水'],
-    core_benefits: ['抗老', '修復', '保濕'],
-    favorite_ingredients: ['海洋精華', '藻類萃取'],
-    official_links: 'https://www.cremedelamer.com',
-    status: 'Published',
-    last_updated_at: '2024-01-15 10:30:00',
-    last_updated_by: 'admin',
-    version: 3,
-  },
-};
+import { brandAPI } from '../services/api';
 
 export default function BrandDetail() {
   const { id } = useParams();
@@ -45,32 +14,104 @@ export default function BrandDetail() {
 
   const [data, setData] = useState({});
   const [isEditing, setIsEditing] = useState(isNew);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
   const [toast, setToast] = useState(null);
 
   useEffect(() => {
     if (!isNew && id) {
-      // 模擬 API 載入
-      const brandData = mockBrandData[id];
-      if (brandData) {
-        setData(brandData);
-      }
+      loadBrand();
     }
   }, [id, isNew]);
 
-  const handleSave = () => {
-    // 模擬儲存
-    console.log('Saving:', data);
-    setToast({ message: '儲存成功', type: 'success' });
-    setIsEditing(false);
-  };
-
-  const handleDelete = () => {
-    if (window.confirm('確定要刪除此品牌嗎？')) {
-      console.log('Deleting:', id);
-      setToast({ message: '刪除成功', type: 'success' });
-      setTimeout(() => navigate('/brands'), 1000);
+  const loadBrand = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await brandAPI.getById(id);
+      if (response.success && response.data) {
+        setData(response.data);
+      } else {
+        setError('找不到此品牌資料');
+      }
+    } catch (err) {
+      console.error('Failed to load brand:', err);
+      setError('無法載入品牌資料，請稍後再試');
+    } finally {
+      setLoading(false);
     }
   };
+
+  const handleSave = async () => {
+    try {
+      setLoading(true);
+      if (isNew) {
+        await brandAPI.create(data);
+        setToast({ message: '新增成功', type: 'success' });
+        setTimeout(() => navigate('/brands'), 1000);
+      } else {
+        await brandAPI.update(id, data);
+        setToast({ message: '儲存成功', type: 'success' });
+        setIsEditing(false);
+      }
+    } catch (err) {
+      console.error('Failed to save brand:', err);
+      setToast({ message: '儲存失敗，請稍後再試', type: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (window.confirm('確定要刪除此品牌嗎？')) {
+      try {
+        setLoading(true);
+        await brandAPI.delete(id);
+        setToast({ message: '刪除成功', type: 'success' });
+        setTimeout(() => navigate('/brands'), 1000);
+      } catch (err) {
+        console.error('Failed to delete brand:', err);
+        setToast({ message: '刪除失敗，請稍後再試', type: 'error' });
+        setLoading(false);
+      }
+    }
+  };
+
+  if (loading && !isNew) {
+    return (
+      <Layout title="載入中...">
+        <div className="flex items-center justify-center py-20">
+          <Loader2 size={32} className="animate-spin text-blue-600" />
+          <span className="ml-3 text-slate-600">載入中...</span>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (error) {
+    return (
+      <Layout title="品牌詳情">
+        <div className="max-w-4xl mx-auto">
+          <button
+            onClick={() => navigate('/brands')}
+            className="flex items-center gap-2 text-slate-600 hover:text-slate-900 transition-colors mb-6"
+          >
+            <ArrowLeft size={20} />
+            <span>返回列表</span>
+          </button>
+          <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
+            <p className="text-red-600 mb-4">{error}</p>
+            <button
+              onClick={loadBrand}
+              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+            >
+              重試
+            </button>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout title={isNew ? '新增品牌' : data.brand_name_zh || '品牌詳情'}>

@@ -1,52 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Edit2, Trash2 } from 'lucide-react';
+import { ArrowLeft, Save, Edit2, Trash2, Loader2 } from 'lucide-react';
 import Layout from '../components/Layout';
 import FormSection from '../components/FormSection';
 import Toast from '../components/Toast';
 import { PRODUCT_SCHEMA } from '../config/schema';
-
-// 模擬資料
-const mockProductData = {
-  'LM-CR-001': {
-    sku: 'LM-CR-001',
-    product_name_zh: '經典乳霜',
-    product_name_en: 'Crème de la Mer',
-    brand_code: 'COMP-L01',
-    status: 'OnSale',
-    template_version: 'v2.0',
-    core_benefits: ['抗老', '修復', '保濕'],
-    full_benefits: ['抗老', '修復', '保濕', '緊緻', '淡紋'],
-    scenarios: ['日常保養', '特殊修護'],
-    usp_1: '海洋傳奇修復能量',
-    usp_2: 'Miracle Broth 專利成分',
-    usp_3: '60年傳奇配方',
-    category_major: '乳霜',
-    category_minor: '修護霜',
-    volume: 60,
-    volume_unit: 'ml',
-    price: 12500,
-    currency: 'TWD',
-    unit_price_per_ml: 208.33,
-    price_tier: '奢華',
-    texture: '豐潤滋養',
-    texture_tags: ['綿密', '滋潤'],
-    scent: '淡雅海洋香',
-    shelf_life_closed: 36,
-    pao: 12,
-    origin: '美國',
-    key_ingredients: '海藻精華|高濃度|修復|天然;維他命E|適量|抗氧化|天然',
-    target_skin_types: ['乾性', '中性'],
-    target_problems: ['抗老', '修復'],
-    target_ages: ['35-44', '45-54'],
-    seasons: ['全年'],
-    usage_guide: '取適量於指尖，以按壓方式塗抹於臉部',
-    frequency: '早晚各一次',
-    last_updated_at: '2024-01-15 10:30:00',
-    last_updated_by: 'admin',
-    version: 5,
-  },
-};
+import { productAPI } from '../services/api';
 
 export default function ProductDetail() {
   const { id } = useParams();
@@ -55,30 +14,104 @@ export default function ProductDetail() {
 
   const [data, setData] = useState({});
   const [isEditing, setIsEditing] = useState(isNew);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
   const [toast, setToast] = useState(null);
 
   useEffect(() => {
     if (!isNew && id) {
-      const productData = mockProductData[id];
-      if (productData) {
-        setData(productData);
-      }
+      loadProduct();
     }
   }, [id, isNew]);
 
-  const handleSave = () => {
-    console.log('Saving:', data);
-    setToast({ message: '儲存成功', type: 'success' });
-    setIsEditing(false);
-  };
-
-  const handleDelete = () => {
-    if (window.confirm('確定要刪除此產品嗎？')) {
-      console.log('Deleting:', id);
-      setToast({ message: '刪除成功', type: 'success' });
-      setTimeout(() => navigate('/products'), 1000);
+  const loadProduct = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await productAPI.getById(id);
+      if (response.success && response.data) {
+        setData(response.data);
+      } else {
+        setError('找不到此產品資料');
+      }
+    } catch (err) {
+      console.error('Failed to load product:', err);
+      setError('無法載入產品資料，請稍後再試');
+    } finally {
+      setLoading(false);
     }
   };
+
+  const handleSave = async () => {
+    try {
+      setLoading(true);
+      if (isNew) {
+        await productAPI.create(data);
+        setToast({ message: '新增成功', type: 'success' });
+        setTimeout(() => navigate('/products'), 1000);
+      } else {
+        await productAPI.update(id, data);
+        setToast({ message: '儲存成功', type: 'success' });
+        setIsEditing(false);
+      }
+    } catch (err) {
+      console.error('Failed to save product:', err);
+      setToast({ message: '儲存失敗，請稍後再試', type: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (window.confirm('確定要刪除此產品嗎？')) {
+      try {
+        setLoading(true);
+        await productAPI.delete(id);
+        setToast({ message: '刪除成功', type: 'success' });
+        setTimeout(() => navigate('/products'), 1000);
+      } catch (err) {
+        console.error('Failed to delete product:', err);
+        setToast({ message: '刪除失敗，請稍後再試', type: 'error' });
+        setLoading(false);
+      }
+    }
+  };
+
+  if (loading && !isNew) {
+    return (
+      <Layout title="載入中...">
+        <div className="flex items-center justify-center py-20">
+          <Loader2 size={32} className="animate-spin text-emerald-600" />
+          <span className="ml-3 text-slate-600">載入中...</span>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (error) {
+    return (
+      <Layout title="產品詳情">
+        <div className="max-w-4xl mx-auto">
+          <button
+            onClick={() => navigate('/products')}
+            className="flex items-center gap-2 text-slate-600 hover:text-slate-900 transition-colors mb-6"
+          >
+            <ArrowLeft size={20} />
+            <span>返回列表</span>
+          </button>
+          <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
+            <p className="text-red-600 mb-4">{error}</p>
+            <button
+              onClick={loadProduct}
+              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+            >
+              重試
+            </button>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout title={isNew ? '新增產品' : data.product_name_zh || '產品詳情'}>

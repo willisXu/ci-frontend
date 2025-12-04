@@ -1,56 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Edit2, Trash2 } from 'lucide-react';
+import { ArrowLeft, Save, Edit2, Trash2, Loader2 } from 'lucide-react';
 import Layout from '../components/Layout';
 import FormSection from '../components/FormSection';
 import Toast from '../components/Toast';
 import { MATERIAL_SCHEMA } from '../config/schema';
-
-// 模擬資料
-const mockMaterialData = {
-  'MAT-001': {
-    material_code: 'MAT-001',
-    supplier_code: 'SUP-001',
-    name_zh: '玻尿酸鈉',
-    name_en: 'Sodium Hyaluronate',
-    inci: 'Sodium Hyaluronate',
-    alias: '透明質酸鈉、HA',
-    material_type_major: '保濕劑',
-    material_type_minor: ['多醣類', '生物技術'],
-    appearance: '白色至淡黃色粉末',
-    physical_form: '粉末',
-    color_options: '白色',
-    odor: '無味',
-    origin_place: '日本',
-    composition_main: '透明質酸鈉',
-    cas: '9067-32-7',
-    function_categories: ['保濕', '修復', '抗老'],
-    core_efficacy: '高效保濕鎖水',
-    mechanism: '透過形成保濕膜，減少經皮水分散失，並深入角質層補充水分',
-    pathways: ['表皮保濕', '真皮填充'],
-    skin_layer: ['角質層', '表皮層', '真皮層'],
-    dosage_range: '0.1-2%',
-    sensitive_dosage: '0.1-0.5%',
-    onset_time: '即時保濕',
-    compatible_with: '大部分成分相容',
-    avoid_with: '強酸強鹼環境',
-    formula_ph_range: '5.0-7.0',
-    add_phase: '水相',
-    max_add_temp: 40,
-    applicable_products: ['精華液', '化妝水', '乳液', '面膜'],
-    skin_types_fit: ['全膚質'],
-    regulations_tw: '一般化粧品成分',
-    storage_conditions: '陰涼乾燥處',
-    storage_temp_range: '15-25°C',
-    shelf_life_months: 24,
-    certifications: ['COSMOS', 'ECOCERT'],
-    biodegradable: true,
-    natural_ratio: 100,
-    last_updated_at: '2024-01-10 09:15:00',
-    last_updated_by: 'admin',
-    version: 4,
-  },
-};
+import { materialAPI } from '../services/api';
 
 export default function MaterialDetail() {
   const { id } = useParams();
@@ -59,30 +14,104 @@ export default function MaterialDetail() {
 
   const [data, setData] = useState({});
   const [isEditing, setIsEditing] = useState(isNew);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
   const [toast, setToast] = useState(null);
 
   useEffect(() => {
     if (!isNew && id) {
-      const materialData = mockMaterialData[id];
-      if (materialData) {
-        setData(materialData);
-      }
+      loadMaterial();
     }
   }, [id, isNew]);
 
-  const handleSave = () => {
-    console.log('Saving:', data);
-    setToast({ message: '儲存成功', type: 'success' });
-    setIsEditing(false);
-  };
-
-  const handleDelete = () => {
-    if (window.confirm('確定要刪除此原料嗎？')) {
-      console.log('Deleting:', id);
-      setToast({ message: '刪除成功', type: 'success' });
-      setTimeout(() => navigate('/materials'), 1000);
+  const loadMaterial = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await materialAPI.getById(id);
+      if (response.success && response.data) {
+        setData(response.data);
+      } else {
+        setError('找不到此原料資料');
+      }
+    } catch (err) {
+      console.error('Failed to load material:', err);
+      setError('無法載入原料資料，請稍後再試');
+    } finally {
+      setLoading(false);
     }
   };
+
+  const handleSave = async () => {
+    try {
+      setLoading(true);
+      if (isNew) {
+        await materialAPI.create(data);
+        setToast({ message: '新增成功', type: 'success' });
+        setTimeout(() => navigate('/materials'), 1000);
+      } else {
+        await materialAPI.update(id, data);
+        setToast({ message: '儲存成功', type: 'success' });
+        setIsEditing(false);
+      }
+    } catch (err) {
+      console.error('Failed to save material:', err);
+      setToast({ message: '儲存失敗，請稍後再試', type: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (window.confirm('確定要刪除此原料嗎？')) {
+      try {
+        setLoading(true);
+        await materialAPI.delete(id);
+        setToast({ message: '刪除成功', type: 'success' });
+        setTimeout(() => navigate('/materials'), 1000);
+      } catch (err) {
+        console.error('Failed to delete material:', err);
+        setToast({ message: '刪除失敗，請稍後再試', type: 'error' });
+        setLoading(false);
+      }
+    }
+  };
+
+  if (loading && !isNew) {
+    return (
+      <Layout title="載入中...">
+        <div className="flex items-center justify-center py-20">
+          <Loader2 size={32} className="animate-spin text-purple-600" />
+          <span className="ml-3 text-slate-600">載入中...</span>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (error) {
+    return (
+      <Layout title="原料詳情">
+        <div className="max-w-4xl mx-auto">
+          <button
+            onClick={() => navigate('/materials')}
+            className="flex items-center gap-2 text-slate-600 hover:text-slate-900 transition-colors mb-6"
+          >
+            <ArrowLeft size={20} />
+            <span>返回列表</span>
+          </button>
+          <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
+            <p className="text-red-600 mb-4">{error}</p>
+            <button
+              onClick={loadMaterial}
+              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+            >
+              重試
+            </button>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout title={isNew ? '新增原料' : data.name_zh || '原料詳情'}>
